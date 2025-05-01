@@ -1,148 +1,183 @@
 #!/bin/bash
 set -e
+set -x  # Enable debug mode to print each command before execution
+
+echo "Starting bootstrap script..."
+
 if [ $# -eq 0 ]; then
-  install=false
+    install=false
 else
-  if [ "$1" = "install" ]; then
-      install=true
-  else
-      echo "Invalid command, supported commands are: 'install'"
-      exit 1
-  fi
+    if [ "$1" = "install" ]; then
+            install=true
+    else
+            echo "Invalid command, supported commands are: 'install'"
+            exit 1
+    fi
 fi
 
+echo "Checking Python version..."
 if [[ "$PYTHON" =~ "python2" ]]; then
-    echo "python2 is not supported." >&2
-    exit 1
+        echo "python2 is not supported." >&2
+        exit 1
 fi
 
-# Use the newest version we find
+echo "Determining Python version to use..."
 if [ -z "$PYTHON" ]; then
-  for i in 12 11 10; do
-    command -v "python3.$i" && PYTHON="python3.$i" &>/dev/null && break
-  done
+    for i in 12 11 10; do
+        echo "Checking for python3.$i..."
+        command -v "python3.$i" && PYTHON="python3.$i" &>/dev/null && break
+    done
 fi
 if [ -z "$PYTHON" ]; then
-  # This would be bizarre, but I suppose possible
-  PYTHON=${PYTHON:-"python3"}
+    echo "Defaulting to python3..."
+    PYTHON=${PYTHON:-"python3"}
 fi
+echo "Using Python: $PYTHON"
 
+echo "Detecting operating system..."
 case "$(uname -s)" in
 Linux)
-    if command -v lsb_release; then
-        OS=$(lsb_release --id --short)
-    else
-        . /etc/os-release
-        OS=$(echo $NAME | tr -d ' ')
-    fi
-    # rpm/dnf is the default, to reduce repetition in the case statement
-    has_pkg="rpm --whatprovides"
-    install_pkg="sudo dnf install -y"
-    case "$OS" in
-    Ubuntu|Debian|LinuxMint)
-        deps=(qemu-utils python3-dev libssl-dev python3-pip python3-wheel $PYTHON-venv libev-dev libvirt-dev libffi-dev libyaml-dev)
-        has_pkg="dpkg -C"
-        install_pkg="sudo apt install -y"
+        if command -v lsb_release; then
+                OS=$(lsb_release --id --short)
+        else
+                . /etc/os-release
+                OS=$(echo $NAME | tr -d ' ')
+        fi
+        echo "Detected OS: $OS"
+        has_pkg="rpm --whatprovides"
+        install_pkg="sudo dnf install -y"
+        case "$OS" in
+        Ubuntu|Debian|LinuxMint)
+                deps=(qemu-utils python3-dev libssl-dev python3-pip python3-wheel python3-venv libev-dev libvirt-dev libffi-dev libyaml-dev build-essential jq realpath curl)
+                has_pkg="dpkg -C"
+                install_pkg="sudo apt install -y"
+                ;;
+        RedHatEnterpriseWorkstation|RedHatEnterpriseServer|RedHatEnterprise|CentOS)
+                deps=(python39-pip python39-devel mariadb-devel libev-devel libvirt-devel libffi-devel)
+                ;;
+        CentOSStream)
+                PYTHON=python3.12
+                deps=($PYTHON-pip $PYTHON-devel)
+                ;;
+        AlmaLinux|RockyLinux)
+                PYTHON=python3.12
+                deps=($PYTHON-pip $PYTHON-devel libev-devel libvirt-devel libffi-devel)
+                ;;
+        Fedora|FedoraLinux)
+                PYTHON=python3.12
+                deps=($PYTHON-pip $PYTHON-devel libev-devel libvirt-devel libffi-devel)
+                ;;
+        "openSUSE project"|"SUSE LINUX"|"openSUSE"|"openSUSELeap"|"openSUSETumbleweed")
+                PYTHON=python3.12
+                deps=(python312-pip python312-devel python312 libev-devel libvirt-devel libffi-devel)
+                install_pkg="sudo zypper install"
+                ;;
+        esac
         ;;
-    RedHatEnterpriseWorkstation|RedHatEnterpriseServer|RedHatEnterprise|CentOS)
-        deps=(python39-pip python39-devel mariadb-devel libev-devel libvirt-devel libffi-devel)
-        ;;
-    CentOSStream)
-        PYTHON=python3.12
-        deps=($PYTHON-pip $PYTHON-devel)
-        ;;
-    AlmaLinux|RockyLinux)
-        PYTHON=python3.12
-        deps=($PYTHON-pip $PYTHON-devel libev-devel libvirt-devel libffi-devel)
-        ;;
-    Fedora|FedoraLinux)
-        PYTHON=python3.12
-        deps=($PYTHON-pip $PYTHON-devel libev-devel libvirt-devel libffi-devel)
-        ;;
-    "openSUSE project"|"SUSE LINUX"|"openSUSE"|"openSUSELeap"|"openSUSETumbleweed")
-        PYTHON=python3.12
-        deps=(python312-pip python312-devel python312 libev-devel libvirt-devel libffi-devel)
-        install_pkg="sudo zypper install"
-        ;;
-    esac
-    ;;
 
 Darwin)
-    deps="python libvirt libev libffi"
-    has_pkg="brew list"
-    install_pkg="brew install"
-    ;;
+        deps="python libvirt libev libffi"
+        has_pkg="brew list"
+        install_pkg="brew install"
+        ;;
 esac
-for package in ${deps[@]}; do
-    if ! $has_pkg $package &>/dev/null; then
-        # add a space after old values
-        missing="${missing:+$missing }$package"
-        echo missing=${missing}
-    fi
-done
-if [ -n "$missing" ]; then
-    echo "$0: missing required packages:" 1>&2
-    echo "$missing"
-    if [ "$install" = true ]; then
-        echo "Installing missing packages..."
-        $install_pkg $missing
-    else
-        echo "Please install missing packages or run './bootstrap install'"
-        echo "$install_pkg $missing"
-        exit 1
-    fi
-    fi
 
+echo "Checking for missing dependencies..."
+for package in ${deps[@]}; do
+        echo "Checking for package: $package"
+        if ! $has_pkg $package &>/dev/null; then
+                missing="${missing:+$missing }$package"
+                echo "Missing package: $package"
+        fi
+done
+
+if [ -n "$missing" ]; then
+        echo "$0: missing required packages:" 1>&2
+        echo "$missing"
+        if [ "$install" = true ]; then
+                echo "Installing missing packages..."
+                $install_pkg $missing
+        else
+                echo "Please install missing packages or run './bootstrap install'"
+                echo "$install_pkg $missing"
+                exit 1
+        fi
+fi
+
+echo "Locating Python binary..."
 PYTHON_BIN=$(command -v $PYTHON)
 if [ -z $PYTHON_BIN -o ! -e $PYTHON_BIN -o ! -x $PYTHON_BIN ]; then
-  echo "Cannot find $PYTHON!"
-  exit 1
+    echo "Cannot find $PYTHON!"
+    exit 1
 fi
+echo "Found Python binary: $PYTHON_BIN"
+
 PYTHON_VER_OUT=$($PYTHON_BIN --version)
+echo "Python version: $PYTHON_VER_OUT"
 
 VENV=${VENV:-"./virtualenv"}
-# If the venv was set to use system site-packages, fix that
+echo "Using virtual environment directory: $VENV"
+
 if [ -f "$VENV/pyvenv.cfg" ]; then
-    sed -i'' -e 's/\(include-system-site-packages\s*=\s*\)true/\1false/g' $VENV/pyvenv.cfg
+        echo "Fixing system site-packages setting in $VENV/pyvenv.cfg..."
+        sed -i'' -e 's/\(include-system-site-packages\s*=\s*\)true/\1false/g' $VENV/pyvenv.cfg
 fi
 
-# Attempt to force a UTF-8 locale without being specific to English
+echo "Setting locale to UTF-8..."
 export LANG=${LANG:-C.UTF-8}
 (echo $LANG | grep -qi utf-8) || export LC_ALL=$LANG.UTF-8
 
 if [ -z "$NO_CLOBBER" ] && \
-  [ ! -e "$VENV/bin/pip" -o ! -e "$VENV/bin/$PYTHON" ] || \
-  [ "${PYTHON_VER_OUT}" != "$($VENV/bin/$PYTHON --version)" ] \
-  ; then
-    rm -rf virtualenv
+    [ ! -e "$VENV/bin/pip" -o ! -e "$VENV/bin/$PYTHON" ] || \
+    [ "${PYTHON_VER_OUT}" != "$($VENV/bin/$PYTHON --version)" ] \
+    ; then
+        echo "Removing existing virtual environment..."
+        rm -rf virtualenv
 fi
 
 if [ -z "$NO_CLOBBER" ] || [ ! -e $VENV ]; then
-    $PYTHON_BIN -m venv $VENV
+        echo "Creating virtual environment..."
+        $PYTHON_BIN -m venv $VENV
 fi
 
+echo "Ensuring compatible pip version..."
+PY_MAJOR=$($VENV/bin/python -c "import sys; print(sys.version_info[0])")
+PY_MINOR=$($VENV/bin/python -c "import sys; print(sys.version_info[1])")
+
+# Downgrade pip for older Python versions
+if [ "$PY_MAJOR" -eq 3 ] && [ "$PY_MINOR" -lt 6 ]; then
+    echo "Detected Python $PY_MAJOR.$PY_MINOR — installing pip 20.3.4"
+    $VENV/bin/python -m ensurepip
+    $VENV/bin/pip install pip==20.3.4 --force-reinstall
+else
+    echo "Detected Python $PY_MAJOR.$PY_MINOR — keeping default pip"
+fi
+
+echo "Installing packaging module..."
 $VENV/bin/pip install packaging
 
-# It is impossible to upgrade ansible from 2.9 to 2.10 via pip.
-# See https://docs.ansible.com/ansible/devel/porting_guides/porting_guide_2.10.html#known-issues
 if [ -f "$VENV/bin/ansible" ]; then
-    uninstall_ansible=$($VENV/bin/python3 -c "import ansible; from packaging.version import parse; print(parse(ansible.__version__) < parse('2.10.0'))")
-    if [ "$uninstall_ansible" = "True" ]; then
-        $VENV/bin/pip uninstall -y ansible
-    fi
+        echo "Checking Ansible version..."
+        uninstall_ansible=$($VENV/bin/python3 -c "import ansible; from packaging.version import parse; print(parse(ansible.__version__) < parse('2.10.0'))")
+        if [ "$uninstall_ansible" = "True" ]; then
+                echo "Uninstalling old Ansible version..."
+                $VENV/bin/pip uninstall -y ansible
+        fi
 fi
 
-# First, upgrade pip
+echo "Upgrading pip..."
 $VENV/bin/pip install --upgrade pip
 
-# See https://github.com/pypa/pip/issues/8559
+echo "Installing requirements from requirements.txt..."
 $VENV/bin/pip install -r requirements.txt --use-pep517
 
-# By default, install teuthology in editable mode
+echo "Installing teuthology in editable mode..."
 $VENV/bin/pip install ${PIP_INSTALL_FLAGS:---editable '.[test]'}
 
-# Check to make sure requirements are met
+echo "Checking installed packages..."
 $VENV/bin/pip check
 
-# Install ansible collections
+echo "Installing Ansible collections..."
 $VENV/bin/ansible-galaxy install -r requirements.yml
+
+echo "Bootstrap script completed successfully."
