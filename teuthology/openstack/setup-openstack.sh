@@ -67,7 +67,7 @@ max_job_time: 32400 # 9 hours
 teuthology_path: .
 canonical_tags: $canonical_tags
 openstack:
-  clone: git clone http://github.com/ceph/teuthology
+  clone: git clone http://github.com/deepssin/teuthology
   user-data: teuthology/openstack/openstack-{os_type}-{os_version}-user-data.txt
   ip: $ip
   nameserver: $nameserver
@@ -506,7 +506,7 @@ function install_packages() {
         sudo apt-get update
     fi
 
-    local packages="jq realpath curl"
+    local packages="jq curl"
     sudo apt-get -qq install -y --force-yes $packages
 
     echo "INSTALL required packages $packages"
