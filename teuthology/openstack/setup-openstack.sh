@@ -517,7 +517,7 @@ function install_packages() {
 CAT=${CAT:-cat}
 
 function verify_openstack() {
-    if ! openstack server list > /dev/null ; then
+    if ! openstack server list --format json > /dev/null ; then
         echo ERROR: the credentials from ~/openrc.sh are not working >&2
         return 1
     fi
@@ -703,12 +703,12 @@ function main() {
     # assume the first available IPv4 subnet is going to be used to assign IP to the instance
     #
     [ -z "$network" ] && {
-        local default_subnets=$(openstack subnet list --ip-version 4 -f json | jq -r '.[] | .Subnet' | sort | uniq)
+        local default_subnets=$(openstack subnet list --ip-version 4 -f json | jq -r '.[] | select(.Name != null) | .Subnet' | sort | uniq)
     } || {
-        local network_id=$(openstack network list -f json | jq -r ".[] | select(.Name == \"$network\") | .ID")
+        local network_id=$(openstack network list -f json | jq -r ".[] | select(.name == \"$network\") | .id")
         local default_subnets=$(openstack subnet list --ip-version 4 -f json \
-            | jq -r ".[] | select(.Network == \"$network_id\") | .Subnet" | sort | uniq)
-    }
+            | jq -r ".[] | select(.network_id == \"$network_id\") | .cidr" | sort | uniq)
+        }
     subnets=$(echo $subnets $default_subnets)
 
     case $provider in
