@@ -64,7 +64,9 @@ suite_verify_ceph_hash: false
 queue_host: localhost
 lab_domain: $labdomain
 max_job_time: 32400 # 9 hours
-teuthology_path: .
+teuthology_path: ./teuthology
+teuthology_branch: $TEUTH_BRANCH
+teuthology_git_url: $TEUTH_GIT
 canonical_tags: $canonical_tags
 openstack:
   clone: git clone http://github.com/deepssin/teuthology
