@@ -297,7 +297,7 @@ function setup_pulpito() {
         virtualenv ./virtualenv
         source ./virtualenv/bin/activate
         pip install --upgrade pip
-        pip install 'setuptools==18.2.0'
+        pip install 'setuptools>=58.0.0'
         pip install -r requirements.txt
         python run.py &
     )
