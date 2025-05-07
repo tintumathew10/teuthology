@@ -1093,23 +1093,39 @@ ssh access           : ssh {identity}{username}@{ip} # logs in /usr/share/nginx/
 
         openrc_sh = ''
         cacert_cmd = None
-        for (var, value) in os.environ.items():
-            if var in ('OS_TOKEN_VALUE', 'OS_TOKEN_EXPIRES'):
-                continue
-            if var == 'OS_CACERT':
-                cacert_path = '/home/%s/.openstack.crt' % self.username
-                cacert_file = value
-                openrc_sh += 'export %s=%s\n' % (var, cacert_path)
-                cacert_cmd = (
-                    "su - -c 'cat > {path}' {user} <<EOF\n"
-                    "{data}\n"
-                    "EOF\n").format(
-                        path=cacert_path,
-                        user=self.username,
-                        data=open(cacert_file).read())
-                log.debug(f"OS_CACERT found, setting up command to write certificate to {cacert_path}")
-            elif var.startswith('OS_'):
-                openrc_sh += 'export %s=%s\n' % (var, value)
+        clouds_yaml_path = os.path.expanduser('~/.config/openstack/clouds.yaml')
+        if os.path.exists(clouds_yaml_path):
+            log.debug(f"clouds.yaml found at {clouds_yaml_path}, processing for openrc.sh")
+            with open(clouds_yaml_path, 'r') as f:
+                clouds_data = yaml.safe_load(f)
+            cloud_name = os.environ.get('OS_CLOUD', 'default')
+            cloud_config = clouds_data.get('clouds', {}).get(cloud_name, {})
+            if not cloud_config:
+                raise Exception(f"Cloud '{cloud_name}' not found in clouds.yaml")
+            auth = cloud_config.get('auth', {})
+            for key, value in {**auth, **cloud_config}.items():
+                if isinstance(value, str):  # Ensure the value is a string
+                    openrc_sh += f"export OS_{key.upper()}={value}\n"
+        else:
+            for (var, value) in os.environ.items():
+                if var in ('OS_TOKEN_VALUE', 'OS_TOKEN_EXPIRES'):
+                    continue
+                if var == 'OS_CACERT':
+                    cacert_path = '/home/%s/.openstack.crt' % self.username
+                    cacert_file = value
+                    openrc_sh += 'export %s=%s\n' % (var, cacert_path)
+                    cacert_cmd = (
+                        "su - -c 'cat > {path}' {user} <<EOF\n"
+                        "{data}\n"
+                        "EOF\n").format(
+                            path=cacert_path,
+                            user=self.username,
+                            data=open(cacert_file).read())
+                    log.debug(f"OS_CACERT found, setting up command to write certificate to {cacert_path}")
+                elif var.startswith('OS_'):
+                    openrc_sh += 'export %s=%s\n' % (var, value)
+                elif var.startswith('TEUTH_'):
+                    openrc_sh += 'export %s=%s\n' % (var, value)
         log.debug("OpenStack environment variables processed")
 
         b64_openrc_sh = base64.b64encode(openrc_sh.encode())
