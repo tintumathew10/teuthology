@@ -198,10 +198,10 @@ function setup_paddles() {
         cd $paddles_dir || return 1
         git pull --rebase
         git clean -ffqdx
-        sed -e "/^address = os.environ.get(/,/^)/c\address = 'http://localhost'" \
-            -e "s|^job_log_href_templ = 'http://qa-proxy.ceph.com/teuthology|job_log_href_templ = 'http://$public_ip|" \
+        sed -e "/^address = os.environ.get(/,/^)/c\address = os.environ.get('PADDLES_ADDRESS', 'http://localhost')" \
+            -e "s|^job_log_href_templ = os.environ.get(.*)|job_log_href_templ = os.environ.get('PADDLES_JOB_LOG_HREF_TEMPL', 'http://$public_ip')|" \
             -e "/sqlite/d" \
-            -e "s|.*'postgresql+psycop.*'|'url': 'postgresql://paddles:paddles@localhost/paddles'|" \
+            -e "s|^ *'url':.*|'url': 'postgresql://paddles:paddles@localhost/paddles',|" \
             -e "s/'host': '127.0.0.1'/'host': '0.0.0.0'/" \
             < config.py.in > config.py
         virtualenv ./virtualenv
