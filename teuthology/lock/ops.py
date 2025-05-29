@@ -43,15 +43,19 @@ def update_nodes(nodes, reset_os=False):
 
 def lock_many_openstack(ctx, num, machine_type, user=None, description=None,
                         arch=None):
+    log.info("locals from lock_many_openstack {}".format(locals()))
     os_type = teuthology.provision.get_distro(ctx)
     os_version = teuthology.provision.get_distro_version(ctx)
     if hasattr(ctx, 'config'):
         resources_hint = ctx.config.get('openstack')
     else:
         resources_hint = None
+    log.info("create provison: {}, {}, {}, {}, {}".format(
+        num, os_type, os_version, arch, resources_hint))
     machines =  teuthology.provision.openstack.ProvisionOpenStack().create(
         num, os_type, os_version, arch, resources_hint)
     result = {}
+    log.info("machine in machines: {}".format(machines))
     for machine in machines:
         lock_one(machine, user, description)
         result[machine] = None # we do not collect ssh host keys yet
@@ -379,6 +383,7 @@ def block_and_lock_machines(ctx, total_requested, machine_type, reimage=True, tr
 
     all_locked = dict()
     requested = total_requested
+    log.info("all_locked: {}, requested {}".format(all_locked, requested))
     while True:
         # get a candidate list of machines
         machines = query.list_locks(
@@ -388,6 +393,7 @@ def block_and_lock_machines(ctx, total_requested, machine_type, reimage=True, tr
             count=requested + reserved,
             tries=tries,
         )
+        log.info("machines: {}".format(machines))
         if machines is None:
             if ctx.block:
                 log.error('Error listing machines, trying again')
@@ -417,6 +423,7 @@ def block_and_lock_machines(ctx, total_requested, machine_type, reimage=True, tr
             newly_locked = lock_many(ctx, requested, machine_type,
                                      ctx.owner, ctx.archive, os_type,
                                      os_version, arch, reimage=reimage)
+            log.info("newly_locked {}".format(newly_locked))
         except Exception:
             # Lock failures should map to the 'dead' status instead of 'fail'
             if 'summary' in ctx:

@@ -306,5 +306,8 @@ def _get_config_path():
     log.warning(f"no teuthology config found, looked for: {paths}")
     return None
 
+config_path = _get_config_path()
+log.info("config path from teuthology-config.py %s", config_path)
+config = TeuthologyConfig(yaml_path=config_path)
+log.info("TeuthologyConfig(yaml_path=config_path) %s", config)
 
-config = TeuthologyConfig(yaml_path=_get_config_path())

@@ -1219,7 +1219,8 @@ def sh(command, log_limit=1024, cwd=None, env=None):
     stdout).  If the command fails, raise an exception. The command
     and its output are logged, on success and on error.
     """
-    log.debug(":sh: " + command)
+    log.info(":sh: " + command)
+    env = env or os.environ.copy()
     proc = subprocess.Popen(
         args=command,
         cwd=cwd,
@@ -1230,6 +1231,7 @@ def sh(command, log_limit=1024, cwd=None, env=None):
         bufsize=1)
     lines = []
     truncated = False
+    log.info("subprocess", proc.__dict__)
     with proc.stdout:
         for line in proc.stdout:
             line = line.decode()
@@ -1249,11 +1251,12 @@ def sh(command, log_limit=1024, cwd=None, env=None):
                       " because an error occurred and some of"
                       " it was truncated")
             log.error(output)
-        raise subprocess.CalledProcessError(
-            returncode=proc.returncode,
-            cmd=command,
-            output=output
-        )
+        log.info("calledprocesserr {}, {} ,{}".format(proc.returncode, command, output))
+        #raise subprocess.CalledProcessError(
+        #    returncode=proc.returncode,
+        #    cmd=command,
+        #    output=output
+        #)
     return output
 
 

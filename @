@@ -94,7 +94,7 @@ def run_tasks(tasks, ctx):
         timer = Timer()
     stack = []
     taskname = ""
-    log.info("Tasks %s", tasks)
+    log.info("run_tasks %s", tasks)
     try:
         for taskdict in tasks:
             try:

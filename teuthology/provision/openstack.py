@@ -199,20 +199,28 @@ class ProvisionOpenStack(OpenStack):
             if "quota exceeded" in exc.output.lower():
                 raise QuotaExceededError(message=exc.output)
             raise
-        instances = filter(
-            lambda instance: self.property in instance['Properties'],
-            self.list_instances())
-        instances = [OpenStackInstance(i['ID']) for i in instances]
+        raw_instances = list(self.list_instances())
+        log.info("raw instances %s", raw_instances)
+
+        filtered = filter(
+            lambda instance: instance.get('Properties', {}).get('teuthology') == self.property,
+            raw_instances
+        )
+        log.info("Matched instances: %s", filtered)
+
+        instances = [OpenStackInstance(i['ID']) for i in filtered]
+        log.info("IDs: %s", instances)
         fqdns = []
         try:
             network = config['openstack'].get('network', '')
+            log.info("networks: {}".format(network))
             for instance in instances:
                 ip = instance.get_ip(network)
                 name = self.ip2name(self.basename, ip)
                 self.run("server set " +
                          "--name " + name + " " +
                          instance['ID'])
-                fqdn = name + '.' + config.lab_domain
+                fqdn = f"ci-vm-{ip.replace('.', '-')}.hosted.upshift.rdu2.redhat.com"
                 if not misc.ssh_keyscan_wait(fqdn):
                     console_log = misc.sh("openstack console log show %s "
                                           "|| true" % instance['ID'])

@@ -164,10 +164,22 @@ class OpenStackInstance(object):
         return self.private_ip
 
     def get_floating_ip(self):
-        ips = TeuthologyOpenStack.get_os_floating_ips()
-        for ip in ips:
-            if ip['Fixed IP Address'] == self.get_ip(''):
-                return ip['Floating IP Address']
+        conn = OpenStack().conn
+        server = conn.compute.find_server(self.name_or_id)
+        if not server:
+            return None
+        # Get all floating IPs
+        floating_ips = list(conn.network.ips())
+        # Get all ports attached to this server
+        ports = list(conn.network.ports(device_id=server.id))
+        fixed_ips = set()
+        for port in ports:
+            for fixed_ip in port.fixed_ips:
+                fixed_ips.add(fixed_ip['ip_address'])
+        for ip in floating_ips:
+            # ip.floating_ip_address, ip.fixed_ip_address, ip.port_id
+            if hasattr(ip, 'fixed_ip_address') and ip.fixed_ip_address in fixed_ips:
+                return ip.floating_ip_address
         return None
 
     def get_floating_ip_or_ip(self):
@@ -297,6 +309,7 @@ class OpenStack(object):
         if re.match('(server|flavor|ip|security|network|image|volume)', cmd):
             cmd = "openstack --quiet " + cmd
         try:
+            log.info(f"running cmd {cmd}")
             status = misc.sh(cmd)
         finally:
             if 'OS_TOKEN' in os.environ:
@@ -354,7 +367,9 @@ class OpenStack(object):
         Return the uuid of the network in OpenStack.
         """
         conn = self.conn
-        network = conn.network.find_network(network_name)
+        log.info("conn {}".format(network))
+        network = conn.network.find_network(network)
+        log.info("net_id {}".format(network))
         if network:
             return network.id
 
@@ -540,21 +555,21 @@ class OpenStack(object):
 
     @staticmethod
     def list_instances():
-        conn = OpenStack().conn
-        ownedby = "ownedby='" + teuth_config.openstack['ip'] + "'"
-        instances = conn.compute.servers(all_projects=True)
-        return [inst for inst in instances if ownedby in (getattr(inst, 'metadata', {}) or {}).get('Properties', '')]
+        ip = teuth_config.openstack['ip']
+        ownedby = "ownedby='" + ip + "'"
+        all = json.loads(OpenStack().run(
+            "server list -f json --long --name 'target'"))
+        log.info("list_instances: all: %s", all)
+        return filter(lambda i: i.get('Properties', {}).get('ownedby') == ip, all)
 
     @staticmethod
     def list_volumes():
-        conn = OpenStack().conn
         ownedby = "ownedby='" + teuth_config.openstack['ip'] + "'"
-        volumes = conn.block_storage.volumes(all_projects=True)
+        all = json.loads(OpenStack().run("volume list -f json --long"))
         def select(volume):
-            props = volume.metadata or {}
-            return (ownedby in props.get('Properties', '') and
-                    props.get('display_name', '').startswith('target'))
-        return filter(select, volumes)
+            return (ownedby in volume['Properties'] and
+                    volume['Display Name'].startswith('target'))
+        return filter(select, all)
 
     def cloud_init_wait(self, instance):
         """
@@ -567,9 +582,10 @@ class OpenStack(object):
             'timeout': 240,
             'retry': False,
         }
-        if self.key_filename:
-            log.debug("Using key file: " + self.key_filename)
-            client_args['key_filename'] = self.key_filename
+        if self.key_filename or getattr(teuth_config, "openstack", {}).get("key_filename"):
+            key_file = self.key_filename or teuth_config.openstack.get("key_filename")
+            log.debug("Using key file: " + key_file)
+            client_args['key_filename'] = key_file
         with safe_while(sleep=30, tries=30, action="cloud_init_wait " + ip) as proceed:
             success = False
             tail = ("tail --follow=name --retry"

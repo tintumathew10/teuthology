@@ -170,6 +170,7 @@ def main(args):
         run_args.extend(["--job-config", job_config_path])
 
         try:
+            print("run_args", run_args)
             job_proc = subprocess.Popen(
                 run_args,
                 stdout=subprocess.DEVNULL,
