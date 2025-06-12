@@ -62,6 +62,8 @@ class ProvisionOpenStack(OpenStack):
         # https://bugs.launchpad.net/python-openstackclient/+bug/1619726
         #r = OpenStack().run("%s -f json " % command)
         json_result = misc.sh("openstack %s -f json" % subcommand)
+        if 'No volume with a name or ID' in json_result:
+            return json_result
         r = json.loads(json_result)
         if get:
             return self.get_value(r, get)
@@ -75,6 +77,7 @@ class ProvisionOpenStack(OpenStack):
         try:
             volume_id = self._openstack("volume show %s" % volume_name, 'id')
         except subprocess.CalledProcessError as e:
+            log.info("CalledProcessError % e.output %s", e, e.output)
             if 'No volume with a name or ID' not in e.output:
                 raise e
         if volume_id:
@@ -138,6 +141,7 @@ class ProvisionOpenStack(OpenStack):
                             action="volume " + volume_name) as proceed:
                 while proceed():
                     try:
+                        log.info("Calling _create_volume %s with size %s", volume_name, volumes['size'])
                         volume_id = self._create_volume(volume_name, volumes['size'])
                         self._await_volume_status(volume_id, 'available')
                         self._attach_volume(volume_id, server_name)
@@ -194,7 +198,8 @@ class ProvisionOpenStack(OpenStack):
                " --wait " +
                " " + self.basename)
         try:
-            self.run(cmd, type='compute')
+            status =self.run(cmd, type='compute')
+            log.info("status is %s", status)
         except CalledProcessError as exc:
             if "quota exceeded" in exc.output.lower():
                 raise QuotaExceededError(message=exc.output)
@@ -229,6 +234,18 @@ class ProvisionOpenStack(OpenStack):
                 time.sleep(15)
                 if not self.cloud_init_wait(instance):
                     raise ValueError('cloud_init_wait failed for ' + fqdn)
+                log.info("addressesssss  %s", ip)
+                scp_cmd = (
+                    f"scp -i /home/ubuntu/cephkey /home/ubuntu/cephkey "
+                    f"ubuntu@{ip}:/home/ubuntu/.ssh/id_ed25519"
+                )
+                misc.sh(scp_cmd)
+                ssh_cmd = (
+                    f"ssh -i /home/ubuntu/cephkey ubuntu@{ip} "
+                    f"\"chmod 600 ~/.ssh/id_ed25519 && chown ubuntu:ubuntu ~/.ssh/id_ed25519\""
+                )
+                misc.sh(ssh_cmd)
+                log.info("Going to attach volumes")
                 self.attach_volumes(name, resources_hint['volumes'])
                 fqdns.append(fqdn)
         except Exception as e:
