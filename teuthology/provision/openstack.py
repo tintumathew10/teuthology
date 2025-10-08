@@ -6,6 +6,7 @@ import re
 import subprocess
 import time
 import tempfile
+import openstack
 
 from subprocess import CalledProcessError
 
@@ -47,6 +48,7 @@ class ProvisionOpenStack(OpenStack):
         template_path = config['openstack']['user-data'].format(
             os_type=os_type,
             os_version=os_version)
+        log.info("From init_user_data" + str(template_path))
         nameserver = config['openstack'].get('nameserver', '8.8.8.8')
         user_data_template = open(template_path).read()
         user_data = user_data_template.format(
@@ -225,7 +227,7 @@ class ProvisionOpenStack(OpenStack):
                 self.run("server set " +
                          "--name " + name + " " +
                          instance['ID'])
-                fqdn = f"ci-vm-{ip.replace('.', '-')}.hosted.upshift.rdu2.redhat.com"
+                fqdn = f"ip-{ip.replace('.', '-')}.{config['lab_domain']}"
                 if not misc.ssh_keyscan_wait(fqdn):
                     console_log = misc.sh("openstack console log show %s "
                                           "|| true" % instance['ID'])
@@ -256,5 +258,17 @@ class ProvisionOpenStack(OpenStack):
         return fqdns
 
     def destroy(self, name_or_id):
-        log.debug('ProvisionOpenStack:destroy ' + name_or_id)
-        return OpenStackInstance(name_or_id).destroy()
+        original = name_or_id
+
+        # If it's a shortname, turn it into the *target* name first
+        resolved = name_or_id
+        m = re.match(r'^ip-(\d+)-(\d+)-(\d+)-(\d+)', name_or_id)
+        if m:
+            ip = ".".join(m.groups())
+            prefix = config.openstack.get('name_prefix', 'target')  # e.g. "target"
+            resolved = ProvisionOpenStack.ip2name(prefix, ip)       # -> target010000196186
+
+        # Use openstacksdk to find the server (UUID) from the *target* name (or UUID)
+
+        log.debug("ProvisionOpenStack.destroy: %s -> %s", original, resolved)
+        return OpenStackInstance(resolved).destroy()

@@ -163,6 +163,8 @@ def lock_one(name, user=None, description=None):
         user = misc.get_user()
     request = dict(name=name, locked=True, locked_by=user,
                    description=description)
+    requests.get(f"{config.lock_server}/nodes/{name}/")
+    log.debug(f"Url: {config.lock_server}/nodes/{name}/")
     uri = os.path.join(config.lock_server, 'nodes', name, 'lock', '')
     response = requests.put(uri, json.dumps(request))
     success = response.ok

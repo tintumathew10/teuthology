@@ -1,0 +1,9 @@
+overrides:
+  ceph:
+    conf:
+      osd:
+        osd_mclock_max_capacity_iops_hdd: 10000
+      #global:
+      #  enable_experimental_unrecoverable_data_corrupting_features: crimson
+      #mon:
+      #  osd_pool_default_crimson: true

@@ -1,6 +1,8 @@
 #cloud-config
 bootcmd:
- - hostnamectl set-hostname $(cat /etc/hostname)
+ - fqdn=$(hostname -f)
+ - shortname=$(echo "$fqdn" | cut -d. -f1)
+ - hostnamectl set-hostname "$shortname"
  - ( echo ; echo "MaxSessions 1000" ) >> /etc/ssh/sshd_config
 # See https://github.com/ceph/ceph-cm-ansible/blob/main/roles/cobbler/templates/snippets/cephlab_user
  - ( echo 'Defaults !requiretty' ; echo 'Defaults visiblepw' ) | tee /etc/sudoers.d/cephlab_sudo ; chmod 0440 /etc/sudoers.d/cephlab_sudo
@@ -13,6 +15,31 @@ packages:
  - wget
  - git
  - chrony
- - redhat-lsb-core
-final_message: "{up}, after $UPTIME seconds"
+ - bzip2
+write_files:
+  - path: /etc/openstack-hosts.block
+    permissions: '0644'
+    encoding: gzip+base64
+    content: |
+      <encrypted_hosts>
 
+runcmd:
+  - systemctl stop ntpd || true
+  - systemctl disable ntpd || true
+  # Disable chrony logging (avoids permission denied errors)
+  - sed -i '/^log /d' /etc/chrony/chrony.conf
+  - sed -i '/^logdir /d' /etc/chrony/chrony.conf
+  # Add a working NTP server if not already configured
+  - grep -q '^server ' /etc/chrony/chrony.conf || echo 'server time.google.com iburst' >> /etc/chrony/chrony.conf
+  # Ensure chrony runs and syncs time
+  - systemctl enable chronyd
+  - systemctl restart chronyd
+  - chronyc -a makestep
+
+  - ip=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4 || true)
+  - name=$(echo "$ip" | tr . -)
+  - '[ -n "$name" ] && hostnamectl set-hostname "ip-$name" || true'
+
+  - 'if [ -s /etc/openstack-hosts.block ]; then TAG_BEGIN="# >>> OPENSTACK HOSTS BEGIN"; TAG_END="# <<< OPENSTACK HOSTS END"; printf "%s\n" "$TAG_BEGIN" > /tmp/hosts.block; cat /etc/openstack-hosts.block >> /tmp/hosts.block; printf "%s\n" "$TAG_END" >> /tmp/hosts.block; sed -e "/^$TAG_BEGIN\$/,/^$TAG_END\$/d" /etc/hosts > /tmp/hosts.base || true; cat /tmp/hosts.base /tmp/hosts.block > /etc/hosts; fi'
+
+final_message: "{up}, after $UPTIME seconds"

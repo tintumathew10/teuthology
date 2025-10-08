@@ -1,0 +1,10 @@
+machine_type: openstack
+openstack:
+  cloud: openstack           # Your cloud name in clouds.yaml
+  flavor: [<flavor_name>] # e.g. m1.medium
+  network: "<network_name>" # e.g. subnet_01
+  os-type: centos
+  os-version: 9
+overrides:
+  openstack:
+    use_floating_ips: false
