@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+shaman_id=$(python3 getUpstreamBuildDetails.py \
+  --branch tentacle \
+  --platform ubuntu-jammy \
+  --arch x86_64)
+
+echo "Using shaman build id: $shaman_id"
+
 run_suite() {
   suite=$1
   extra_args=$2
@@ -18,7 +25,7 @@ run_suite() {
     --limit $rand \
     --job-threshold $rand \
     --subset ${rand}/10000 \
-    --sha1 f14fbb4815714edf3eca4334db9179cb909f2b71 \
+    --sha1 $shaman_id \
     $extra_args
 }
 
